@@ -2,7 +2,6 @@
 
 A full-featured cold email outreach platform inspired by Instantly.ai. Run it yourself, own your data, pay nothing per contact. Built with Node.js, Next.js, PostgreSQL, and Redis.
 
-![Stack](https://img.shields.io/badge/stack-Node%20%7C%20Next.js%20%7C%20PostgreSQL%20%7C%20Redis-blue)
 
 ---
 
