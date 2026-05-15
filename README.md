@@ -29,7 +29,7 @@ A full-featured cold email outreach platform inspired by Instantly.ai. Run it yo
 
 ---
 
-## Setup (Local Dev — 5 minutes)
+## Setup (Local Dev — ~5 minutes)
 
 ### 1. Clone the repo
 
@@ -75,34 +75,26 @@ ANTHROPIC_API_KEY=
 > openssl rand -hex 32   # run this 3 times — once for each key
 > ```
 
-### 4. Start Docker (database + Redis)
+### 4. Start Docker Desktop
 
-Make sure Docker Desktop is running, then:
+Open Docker Desktop and wait for it to finish starting (the whale icon in your menu bar stops animating). Docker runs Postgres and Redis locally — no cloud account needed.
 
-```bash
-docker compose up -d db redis
-```
-
-### 5. Run database migrations
-
-This creates all the tables:
-
-```bash
-pnpm db:push
-```
-
-### 6. Start everything
+### 5. Start everything
 
 ```bash
 bash start.sh
 ```
 
-This script:
-- Kills any processes already on ports 3000/3001
+This script handles everything automatically:
+- Starts Postgres and Redis via Docker
+- Waits for the database to be ready
+- Runs database migrations (creates all tables)
 - Starts the API server (port 3001)
 - Starts the background worker (campaign sends, reply detection, warmup)
 - Starts the Next.js frontend (port 3000)
 - Prints a status check when ready
+
+> **First run takes ~30 seconds** — Docker pulls images and Next.js compiles. Subsequent starts are fast.
 
 Open **http://localhost:3000** and create your account.
 
@@ -442,9 +434,8 @@ bash start.sh
 - Check that Redis is running: `docker compose ps redis`
 
 **Database schema out of date after pulling updates**
-```bash
-pnpm db:push
-```
+
+Just re-run `bash start.sh` — migrations run automatically every time.
 
 ---
 

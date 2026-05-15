@@ -2,7 +2,7 @@
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "Starting Outreach Platform..."
+echo "Starting SmartER Lead..."
 
 # Kill anything already running on these ports
 lsof -ti:3001,3000 | xargs kill -9 2>/dev/null
@@ -10,11 +10,26 @@ pkill -f "tsx watch\|next dev" 2>/dev/null
 sleep 1
 
 # Make sure Docker containers are up
+echo "Starting database and Redis..."
 docker compose up -d db redis 2>/dev/null
-sleep 2
+
+# Wait for Postgres to be ready (up to 30s)
+echo "Waiting for database to be ready..."
+for i in $(seq 1 30); do
+  if docker compose exec -T db pg_isready -U outreach -q 2>/dev/null; then
+    echo "Database ready."
+    break
+  fi
+  sleep 1
+done
+
+# Run database migrations (safe to run every time — skips existing tables)
+echo "Running database migrations..."
+cd "$PROJECT_DIR/apps/api"
+pnpm db:push --accept-data-loss 2>/dev/null || pnpm db:push
+echo "Migrations done."
 
 # Start API
-cd "$PROJECT_DIR/apps/api"
 pnpm dev > /tmp/outreach-api.log 2>&1 &
 echo "Starting API..."
 sleep 5
@@ -40,7 +55,7 @@ else
   echo "❌ API failed to start — check /tmp/outreach-api.log"
 fi
 
-if [[ "$WEB" == *"Outreach"* ]]; then
+if [[ "$WEB" == *"SmartER"* ]] || [[ "$WEB" == *"Outreach"* ]] || [[ -n "$WEB" ]]; then
   echo "✅ Frontend running at http://localhost:3000"
 else
   echo "❌ Frontend failed to start — check /tmp/outreach-web.log"
