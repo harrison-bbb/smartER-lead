@@ -11,6 +11,14 @@ import type { Request } from 'express'
 export const accountsRouter: ExpressRouter = Router()
 accountsRouter.use(requireAuth)
 
+// Block private/internal IPs in SMTP/IMAP hosts to prevent SSRF port scanning
+function isBlockedHost(host: string): boolean {
+  const h = host.trim().toLowerCase()
+  if (h === 'localhost' || h === '::1') return true
+  // IPv4 private ranges: 127.x, 10.x, 192.168.x, 172.16-31.x, 169.254.x (link-local), 0.0.0.0
+  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0)/.test(h)
+}
+
 const createAccountSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
@@ -76,6 +84,15 @@ accountsRouter.post('/', async (req, res) => {
   }
   const { username, password, ...rest } = parse.data
 
+  if (rest.smtpHost && isBlockedHost(rest.smtpHost)) {
+    res.status(400).json({ error: 'Invalid SMTP host' })
+    return
+  }
+  if (rest.imapHost && isBlockedHost(rest.imapHost)) {
+    res.status(400).json({ error: 'Invalid IMAP host' })
+    return
+  }
+
   const [account] = await db
     .insert(emailAccounts)
     .values({
@@ -137,6 +154,15 @@ accountsRouter.patch('/:id', async (req, res) => {
 
   if (!existing) {
     res.status(404).json({ error: 'Account not found' })
+    return
+  }
+
+  if (req.body.smtpHost && isBlockedHost(req.body.smtpHost as string)) {
+    res.status(400).json({ error: 'Invalid SMTP host' })
+    return
+  }
+  if (req.body.imapHost && isBlockedHost(req.body.imapHost as string)) {
+    res.status(400).json({ error: 'Invalid IMAP host' })
     return
   }
 

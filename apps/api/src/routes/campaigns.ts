@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express'
 import { z } from 'zod'
 import { eq, and, sql, desc } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { campaigns, sequenceSteps, campaignLeads, leads, listLeads, sentEmails, emailEvents, warmupAccounts } from '../db/schema.js'
+import { campaigns, sequenceSteps, campaignLeads, leads, listLeads, lists, sentEmails, emailEvents, warmupAccounts } from '../db/schema.js'
 import { requireAuth, auth, type AuthRequest } from '../middleware/auth.js'
 import { campaignSendQueue } from '../queues/campaign-send.js'
 
@@ -92,6 +92,20 @@ campaignsRouter.patch('/:id', async (req, res) => {
     res.status(400).json({ error: 'Validation failed', details: parse.error.flatten() })
     return
   }
+
+  // If listId is being set, verify it belongs to this user
+  if (parse.data.listId) {
+    const [list] = await db
+      .select()
+      .from(lists)
+      .where(and(eq(lists.id, parse.data.listId), eq(lists.userId, userId)))
+      .limit(1)
+    if (!list) {
+      res.status(404).json({ error: 'List not found' })
+      return
+    }
+  }
+
   const [campaign] = await db
     .update(campaigns)
     .set({ ...parse.data, updatedAt: new Date() })
@@ -187,6 +201,17 @@ campaignsRouter.post('/:id/start', async (req, res) => {
     .limit(1)
   if (steps.length === 0) {
     res.status(422).json({ error: 'Campaign must have at least one sequence step' })
+    return
+  }
+
+  // Verify the list belongs to this user before enrolling
+  const [list] = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.id, campaign.listId), eq(lists.userId, userId)))
+    .limit(1)
+  if (!list) {
+    res.status(422).json({ error: 'Campaign list not found or does not belong to you' })
     return
   }
 
