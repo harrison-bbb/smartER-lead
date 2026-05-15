@@ -442,9 +442,3 @@ Just re-run `bash start.sh` — migrations run automatically every time.
 ## Contributing
 
 PRs welcome. Please open an issue first for large changes.
-
----
-
-## License
-
-MIT
