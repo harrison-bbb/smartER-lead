@@ -105,18 +105,37 @@ warmupRouter.get('/pools/:poolId/accounts', async (req, res) => {
 
 warmupRouter.delete('/pools/:poolId/accounts/:accountId', async (req, res) => {
   const { userId } = auth(req)
+  const [pool] = await db
+    .select()
+    .from(warmupPools)
+    .where(and(eq(warmupPools.id, req.params.poolId), eq(warmupPools.userId, userId)))
+    .limit(1)
+  if (!pool) {
+    res.status(404).json({ error: 'Pool not found' })
+    return
+  }
   await db
     .delete(warmupAccounts)
-    .where(eq(warmupAccounts.id, req.params.accountId))
+    .where(and(eq(warmupAccounts.id, req.params.accountId), eq(warmupAccounts.poolId, pool.id)))
   res.json({ data: { ok: true } })
 })
 
 warmupRouter.patch('/pools/:poolId/accounts/:accountId', async (req, res) => {
+  const { userId } = auth(req)
   const { status } = z.object({ status: z.enum(['active', 'paused']) }).parse(req.body)
+  const [pool] = await db
+    .select()
+    .from(warmupPools)
+    .where(and(eq(warmupPools.id, req.params.poolId), eq(warmupPools.userId, userId)))
+    .limit(1)
+  if (!pool) {
+    res.status(404).json({ error: 'Pool not found' })
+    return
+  }
   const [wa] = await db
     .update(warmupAccounts)
     .set({ status, updatedAt: new Date() })
-    .where(eq(warmupAccounts.id, req.params.accountId))
+    .where(and(eq(warmupAccounts.id, req.params.accountId), eq(warmupAccounts.poolId, pool.id)))
     .returning()
   res.json({ data: wa })
 })

@@ -26,7 +26,7 @@ const leadSchema = z.object({
 leadsRouter.get('/', async (req, res) => {
   const { userId } = auth(req)
   const page = parseInt(req.query.page as string ?? '1')
-  const pageSize = parseInt(req.query.pageSize as string ?? '50')
+  const pageSize = Math.min(100, parseInt(req.query.pageSize as string ?? '50'))
   const search = req.query.search as string | undefined
 
   const offset = (page - 1) * pageSize
@@ -171,15 +171,18 @@ leadsRouter.post('/import', upload.single('file'), async (req, res) => {
     imported += result.length
   }
 
-  // Optionally add to list
+  // Optionally add to list — only the leads from this import batch, not all user leads
   if (parse2.data.listId) {
     const { listLeads } = await import('../db/schema.js')
-    const inserted = await db
-      .select({ id: leads.id })
-      .from(leads)
-      .where(eq(leads.userId, userId))
+    const importedIds: string[] = []
+    for (let i = 0; i < toInsert.length; i += 500) {
+      const batch = toInsert.slice(i, i + 500)
+      const rows = await db.select({ id: leads.id }).from(leads)
+        .where(and(eq(leads.userId, userId), sql`${leads.email} = ANY(ARRAY[${sql.join(batch.map(l => sql`${l.email}`), sql`, `)}])`))
+      importedIds.push(...rows.map(r => r.id))
+    }
 
-    const listEntries = inserted.map(({ id }) => ({
+    const listEntries = importedIds.map((id) => ({
       listId: parse2.data.listId!,
       leadId: id,
     }))

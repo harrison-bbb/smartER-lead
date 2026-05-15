@@ -1,7 +1,12 @@
 import { SignJWT, jwtVerify } from 'jose'
 
-const ACCESS_SECRET = new TextEncoder().encode(process.env.JWT_SECRET ?? 'change-me')
-const REFRESH_SECRET = new TextEncoder().encode(process.env.JWT_REFRESH_SECRET ?? 'change-me-refresh')
+const jwtSecret = process.env.JWT_SECRET
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET
+if (!jwtSecret || jwtSecret.startsWith('change_me')) throw new Error('JWT_SECRET env var must be set to a secure value')
+if (!jwtRefreshSecret || jwtRefreshSecret.startsWith('change_me')) throw new Error('JWT_REFRESH_SECRET env var must be set to a secure value')
+
+const ACCESS_SECRET = new TextEncoder().encode(jwtSecret)
+const REFRESH_SECRET = new TextEncoder().encode(jwtRefreshSecret)
 
 export async function signAccessToken(userId: string): Promise<string> {
   return new SignJWT({ sub: userId })

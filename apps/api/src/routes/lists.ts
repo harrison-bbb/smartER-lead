@@ -1,6 +1,6 @@
 import { Router, type Router as ExpressRouter } from 'express'
 import { z } from 'zod'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { lists, listLeads, leads } from '../db/schema.js'
 import { requireAuth, auth, type AuthRequest } from '../middleware/auth.js'
@@ -73,10 +73,19 @@ listsRouter.post('/:id/leads', async (req, res) => {
     return
   }
 
-  await db
-    .insert(listLeads)
-    .values(leadIds.map((leadId) => ({ listId: list.id, leadId })))
-    .onConflictDoNothing()
+  // Verify all leadIds belong to this user before inserting
+  const ownedLeads = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(and(eq(leads.userId, userId), inArray(leads.id, leadIds)))
+  const ownedIds = ownedLeads.map((l) => l.id)
+
+  if (ownedIds.length > 0) {
+    await db
+      .insert(listLeads)
+      .values(ownedIds.map((leadId) => ({ listId: list.id, leadId })))
+      .onConflictDoNothing()
+  }
 
   res.json({ data: { ok: true } })
 })

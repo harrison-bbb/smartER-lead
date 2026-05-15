@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from 'express'
 import { eq } from 'drizzle-orm'
+import { createHmac } from 'crypto'
 import { db } from '../db/index.js'
 import { emailAccounts } from '../db/schema.js'
 import { getAuthUrl, exchangeCode, getUserEmail } from '../lib/google-oauth.js'
@@ -7,6 +8,24 @@ import { encrypt } from '../lib/crypto.js'
 import { verifyAccessToken } from '../lib/jwt.js'
 
 export const googleAuthRouter: ExpressRouter = Router()
+
+function signState(payload: object): string {
+  const json = JSON.stringify(payload)
+  const hmac = createHmac('sha256', process.env.JWT_SECRET!).update(json).digest('hex')
+  return Buffer.from(JSON.stringify({ ...payload, _hmac: hmac })).toString('base64url')
+}
+
+function verifyState(state: string): { userId: string; name: string } {
+  const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as {
+    userId: string
+    name: string
+    _hmac: string
+  }
+  const { _hmac, ...payload } = decoded
+  const expected = createHmac('sha256', process.env.JWT_SECRET!).update(JSON.stringify(payload)).digest('hex')
+  if (_hmac !== expected) throw new Error('Invalid state signature')
+  return payload
+}
 
 // Step 1 — redirect user to Google's consent screen
 // Called from frontend: GET /auth/google/start?token=<access_token>&name=<account_name>
@@ -27,8 +46,8 @@ googleAuthRouter.get('/start', async (req, res) => {
     return
   }
 
-  // Encode userId + name in the state param so we can retrieve it on callback
-  const state = Buffer.from(JSON.stringify({ userId, name })).toString('base64url')
+  // HMAC-signed state prevents CSRF account-linking attacks
+  const state = signState({ userId, name })
   const url = getAuthUrl(state)
   res.redirect(url)
 })
@@ -47,10 +66,7 @@ googleAuthRouter.get('/callback', async (req, res) => {
   let userId: string
   let name: string
   try {
-    const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as {
-      userId: string
-      name: string
-    }
+    const decoded = verifyState(state)
     userId = decoded.userId
     name = decoded.name
   } catch {

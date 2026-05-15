@@ -49,6 +49,19 @@ trackingRouter.get('/click/:emailId/:hash', async (req, res) => {
     .limit(1)
 
   if (link) {
+    // Only redirect to http/https URLs — reject javascript:, data:, etc.
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(link.originalUrl)
+    } catch {
+      res.status(400).send('Invalid link')
+      return
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      res.status(400).send('Invalid link')
+      return
+    }
+
     db.insert(emailEvents)
       .values({
         sentEmailId: emailId,

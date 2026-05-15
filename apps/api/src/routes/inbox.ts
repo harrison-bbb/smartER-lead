@@ -1,11 +1,24 @@
 import { Router, type Router as ExpressRouter } from 'express'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import sanitizeHtml from 'sanitize-html'
 import { db } from '../db/index.js'
 import { replies, campaignLeads, campaigns, sentEmails, sequenceSteps, emailAccounts } from '../db/schema.js'
 import { requireAuth, auth } from '../middleware/auth.js'
 import { replyDetectQueue } from '../queues/reply-detect.js'
 import { sendEmail } from '../lib/mailer.js'
+
+// Allowed tags/attributes for rendering inbound email HTML safely
+const SAFE_EMAIL_HTML: sanitizeHtml.IOptions = {
+  allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']),
+  allowedAttributes: {
+    ...sanitizeHtml.defaults.allowedAttributes,
+    img: ['src', 'alt', 'width', 'height'],
+    a: ['href', 'name', 'target'],
+  },
+  allowedSchemes: ['http', 'https', 'mailto'],
+  allowedSchemesByTag: { img: ['https', 'cid'] },
+}
 
 export const inboxRouter: ExpressRouter = Router()
 inboxRouter.use(requireAuth)
@@ -16,7 +29,7 @@ const VALID_TAGS = ['interested', 'not_interested', 'meeting_booked', 'out_of_of
 inboxRouter.get('/', async (req, res) => {
   const { userId } = auth(req)
   const page = parseInt(req.query.page as string ?? '1')
-  const pageSize = parseInt(req.query.pageSize as string ?? '30')
+  const pageSize = Math.min(100, parseInt(req.query.pageSize as string ?? '30'))
   const unreadOnly = req.query.unread === 'true'
   const tagFilter = req.query.tag as string | undefined
   const offset = (page - 1) * pageSize
@@ -107,7 +120,8 @@ inboxRouter.get('/:id', async (req, res) => {
     await db.update(replies).set({ read: true }).where(eq(replies.id, row.reply.id))
   }
 
-  res.json({ data: { ...row.reply, read: true, campaignId: row.campaignId, campaignName: row.campaignName } })
+  const safeBody = row.reply.bodyFull ? sanitizeHtml(row.reply.bodyFull, SAFE_EMAIL_HTML) : null
+  res.json({ data: { ...row.reply, bodyFull: safeBody, read: true, campaignId: row.campaignId, campaignName: row.campaignName } })
 })
 
 // PATCH /inbox/:id — update tag and/or read status
@@ -274,13 +288,18 @@ inboxRouter.post('/:id/reply', async (req, res) => {
     return
   }
 
-  const replySubject = row.reply.subject?.startsWith('Re:')
+  // Strip CR/LF from inbound-derived header values to prevent header injection
+  const sanitizeHeader = (s: string) => s.replace(/[\r\n]/g, '')
+
+  const rawSubject = row.reply.subject?.startsWith('Re:')
     ? row.reply.subject
     : `Re: ${row.reply.subject ?? ''}`
+  const replySubject = sanitizeHeader(rawSubject)
+  const replyTo = sanitizeHeader(row.reply.fromEmail)
 
   await sendEmail(account, {
     from: account.senderName ?? account.name,
-    to: row.reply.fromEmail,
+    to: replyTo,
     subject: replySubject,
     html: body,
     headers: row.reply.messageId

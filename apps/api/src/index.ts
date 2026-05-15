@@ -34,6 +34,11 @@ app.use(
   }),
 )
 
+// Tighter limit on auth endpoints to prevent brute-force
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false })
+app.use('/auth/login', authLimiter)
+app.use('/auth/register', authLimiter)
+
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
 app.use('/auth', authRouter)
